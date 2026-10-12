@@ -1,0 +1,47 @@
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      GEOSERVER_DB_USER: ${GEOSERVER_DB_USER}
+      GEOSERVER_DB_PASSWORD: ${GEOSERVER_DB_PASSWORD}
+    volumes:
+      - ${DATA_DIR:-./data}/postgis:/var/lib/postgresql/data
+      - ./postgis/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  geoserver:
+    image: docker.osgeo.org/geoserver:${GEOSERVER_VERSION:-2.28.5}
+    restart: unless-stopped
+    depends_on:
+      postgis:
+        condition: service_healthy
+    ports:
+      # 127.0.0.1 — only this PC; 0.0.0.0 — also from the local network (uploading from a workstation).
+      - "${GEOSERVER_BIND:-127.0.0.1}:8080:8080"
+    environment:
+      SKIP_DEMO_DATA: "true"
+      # GEOSERVER_ADMIN_PASSWORD is deliberately not passed: the image then rewrites
+      # users.xml on every start and drops all other users. setup sets the password.
+      GEOSERVER_CSRF_WHITELIST: ${PUBLIC_HOSTNAME}
+      EXTRA_JAVA_OPTS: "-Xms1g -Xmx${GEOSERVER_MAX_HEAP:-2g}"
+    volumes:
+      - ${DATA_DIR:-./data}/geoserver_data:/opt/geoserver_data
+      - ${DATA_DIR:-./data}/surveys:/data/surveys:ro
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - geoserver
+    profiles: ["tunnel"]
