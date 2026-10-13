@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import queue
 import re
 import subprocess
@@ -113,8 +114,17 @@ class App(tk.Tk):
         self.progress = ttk.Progressbar(bottom, mode="determinate", maximum=1.0)
         self.progress.pack(fill="x")
         ttk.Label(bottom, textvariable=self.status).pack(anchor="w", pady=4)
-        self.start_btn = ttk.Button(bottom, text="Загрузить на сервер", command=self.start_upload)
-        self.start_btn.pack(anchor="e")
+        buttons = ttk.Frame(bottom)
+        buttons.pack(anchor="e")
+        push_icon = Path(__file__).with_name("assets") / "push_28.png"
+        if push_icon.exists():
+            self._push_icon = tk.PhotoImage(file=str(push_icon))
+            self.push_btn = ttk.Button(buttons, image=self._push_icon, command=self.git_push)
+        else:
+            self.push_btn = ttk.Button(buttons, text="⇪", width=3, command=self.git_push)
+        self.push_btn.pack(side="left", padx=(0, 6))
+        self.start_btn = ttk.Button(buttons, text="Загрузить", command=self.start_upload)
+        self.start_btn.pack(side="left", ipady=4)
 
         self.log = tk.Text(f, height=6, state="disabled", font=("Monospace", 9))
         self.log.pack(fill="x", pady=(8, 0))
@@ -374,6 +384,39 @@ class App(tk.Tk):
 
         threading.Thread(target=run, daemon=True).start()
 
+    def git_push(self) -> None:
+        """Коммитит изменения проекта и отправляет их на GitHub (ключ и имя из .git/config)."""
+        self.push_btn.configure(state="disabled")
+        repo = cli.ROOT
+
+        # Без CURSOR_*: при CURSOR_AGENT git дописывает в коммит соавтора Cursor.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("CURSOR")}
+        env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o ConnectTimeout=20"
+
+        def git(*args: str) -> subprocess.CompletedProcess:
+            return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, timeout=120, env=env)
+
+        def run() -> None:
+            try:
+                if git("status", "--porcelain").stdout.strip():
+                    git("add", "-A")
+                    r = git("commit", "-q", "-m", f"Обновление {dt.datetime.now():%Y-%m-%d %H:%M}")
+                    if r.returncode:
+                        raise RuntimeError(r.stderr or r.stdout)
+                r = git("pull", "-q", "--rebase", "origin", "main")
+                if r.returncode:
+                    git("rebase", "--abort")
+                    raise RuntimeError(r.stderr or r.stdout)
+                r = git("push", "-q", "origin", "HEAD:main")
+                if r.returncode:
+                    raise RuntimeError(r.stderr or r.stdout)
+                head = git("log", "-1", "--format=%h %s").stdout.strip()
+                self.events.put(("pushed", True, head))
+            except Exception as e:  # noqa: BLE001
+                self.events.put(("pushed", False, str(e).strip()))
+
+        threading.Thread(target=run, daemon=True).start()
+
     # ------------------------------------------------------------ events
 
     def _poll(self) -> None:
@@ -398,6 +441,13 @@ class App(tk.Tk):
                     messagebox.showinfo("Загрузка завершена", f"Опубликовано {ev[1]} из {ev[2]} файлов.")
                 elif kind == "check":
                     self.check_server()
+                elif kind == "pushed":
+                    self.push_btn.configure(state="normal")
+                    if ev[1]:
+                        self.write_log(f"✔ GitHub: {ev[2]}")
+                    else:
+                        self.write_log(f"✖ GitHub: {ev[2]}")
+                        messagebox.showerror("GitHub", ev[2])
         except queue.Empty:
             pass
         self.after(100, self._poll)
