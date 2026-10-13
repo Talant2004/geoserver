@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../geoserver_api.dart';
 import '../models.dart';
+import '../server_locator.dart';
 import '../settings.dart';
 import 'map_screen.dart';
 import 'settings_screen.dart';
@@ -26,14 +27,36 @@ class _SurveysScreenState extends State<SurveysScreen> {
   void initState() {
     super.initState();
     if (_settings.isConfigured) {
-      _future = _api.surveys();
+      _future = _load();
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openSettings());
     }
   }
 
+  /// При автоадресе сначала узнаёт актуальный адрес сервера; если GitHub недоступен,
+  /// остаётся последний известный.
+  Future<List<Survey>> _load() async {
+    if (_settings.autoUrl) {
+      final url = await fetchServerUrl();
+      if (url != null && url != _settings.serverUrl) {
+        final s = _settings.copyWith(serverUrl: url);
+        await s.save();
+        if (mounted) {
+          setState(() {
+            _settings = s;
+            _api = GeoServerApi(s);
+          });
+        }
+      }
+      if (_settings.serverUrl.isEmpty) {
+        throw Exception('не удалось узнать адрес сервера. Проверьте интернет на телефоне.');
+      }
+    }
+    return _api.surveys();
+  }
+
   Future<void> _reload() async {
-    final f = _api.surveys();
+    final f = _load();
     setState(() => _future = f);
     await f.catchError((_) => <Survey>[]);
   }
@@ -47,7 +70,7 @@ class _SurveysScreenState extends State<SurveysScreen> {
     setState(() {
       _settings = s;
       _api = GeoServerApi(s);
-      _future = _api.surveys();
+      _future = _load();
     });
   }
 

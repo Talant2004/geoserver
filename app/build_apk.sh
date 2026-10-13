@@ -26,7 +26,12 @@ grep -q 'usesCleartextTraffic' "$MANIFEST" ||
 flutter pub get
 flutter analyze --no-fatal-infos
 flutter test
-flutter build apk --release --target-platform android-arm64
+# Логин приложения встраивается в APK, чтобы на телефоне ничего не настраивать.
+DEFINES=()
+[ -n "${POVILIKA_PASSWORD:-}" ] && DEFINES+=("--dart-define=POVILIKA_PASSWORD=$POVILIKA_PASSWORD")
+[ -n "${POVILIKA_USER:-}" ] && DEFINES+=("--dart-define=POVILIKA_USER=$POVILIKA_USER")
+[ -n "${POVILIKA_URL_REPO:-}" ] && DEFINES+=("--dart-define=POVILIKA_URL_REPO=$POVILIKA_URL_REPO")
+flutter build apk --release --target-platform android-arm64 "${DEFINES[@]}"
 
 mkdir -p dist
 cp build/app/outputs/flutter-apk/app-release.apk dist/povilika.apk
