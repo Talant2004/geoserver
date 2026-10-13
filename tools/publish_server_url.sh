@@ -9,6 +9,15 @@ BRANCH=server-url
 WORK="${POVILIKA_URL_WORKDIR:-/data/povilika/url-publish}"
 CONTAINER=povilika-quicktunnel
 
+# После обрыва интернета Cloudflare удаляет временный туннель, а cloudflared бесконечно
+# переподключается к нему с ошибкой «Tunnel not found». Лечится только перезапуском
+# (туннель получит новый адрес, который опубликуется ниже).
+if docker logs --since 3m "$CONTAINER" 2>&1 | grep -q 'Tunnel not found'; then
+  echo "$(date -Is) туннель удалён Cloudflare, перезапуск"
+  docker restart "$CONTAINER" >/dev/null
+  sleep 20
+fi
+
 url=$(docker logs "$CONTAINER" 2>&1 | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' |
   grep -v '^https://api\.' | tail -1 || true)
 [ -n "$url" ] || { echo "$(date -Is) туннель $CONTAINER не дал адреса"; exit 0; }
