@@ -32,7 +32,7 @@ def _photo(rgb: np.ndarray) -> tk.PhotoImage:
 
 class DetectWindow(tk.Toplevel):
     def __init__(self, master, cfg: cli.Config, survey: dict):
-        super().__init__(master)
+        super().__init__(master, class_="Povilika")
         self.cfg = cfg
         self.survey = survey
         self.title(f"Поиск очагов — {survey['farm']} / {survey['field']} / {survey['survey_date'][:10]}")

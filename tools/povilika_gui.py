@@ -45,8 +45,13 @@ def human_size(n: int) -> str:
 
 class App(tk.Tk):
     def __init__(self) -> None:
-        super().__init__()
+        # className должен совпадать с StartupWMClass в .desktop, иначе окно не попадёт на значок в Dock.
+        super().__init__(className="Povilika")
         self.title("Повилика — загрузка снимков")
+        icon = Path(__file__).with_name("assets") / "povilika_128.png"
+        if icon.exists():
+            self._icon = tk.PhotoImage(file=str(icon))
+            self.iconphoto(True, self._icon)
         self.geometry("980x620")
         self.minsize(820, 500)
         self.cfg = cli.Config.from_env(cli.DEFAULT_ENV)
@@ -159,7 +164,7 @@ class App(tk.Tk):
         if not iid or self.busy:
             return
         row = self.rows[iid]
-        dlg = tk.Toplevel(self)
+        dlg = tk.Toplevel(self, class_="Povilika")
         dlg.title(row["path"].name)
         dlg.transient(self)
         dlg.resizable(False, False)
